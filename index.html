@@ -1,0 +1,903 @@
+import React, { useState, useEffect, useCallback } from 'react';
+
+// --- Constantes de la API de Gemini ---
+// Usaremos gemini-2.5-flash-preview-09-2025 para generación estructurada.
+const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
+const API_KEY = "AIzaSyDPovgejQbslx7EkbOPwjFhNhi4NLgAYJc"; // El entorno de Canvas lo provee.
+
+// --- Definiciones de Íconos SVG ---
+
+const UserIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+);
+const CheckCircleIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+);
+const PlusIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+);
+const KnifeIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4L20 9.5l-2.75 2.75L11.75 6.75zM8.5 15.5l5 5 2.5-2.5-5-5zM17 13.5l-5-5"/></svg>
+);
+const SearchIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+);
+const PencilIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+);
+const HashIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+);
+const CheckIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+);
+const ClockIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+);
+const AILogo = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 0-7.3 17.5l-.2.2h.1l-.1.1a1 1 0 0 0 .7 1.7h14.2a1 1 0 0 0 .7-1.7l-.1-.1.1-.1A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/><path d="M12 17s-2.5-1-4-1-4 1-4 1"/></svg>
+);
+
+
+// --- Componentes Reutilizables ---
+
+const PlayerTag = ({ name, role, isRemovable, onRemove }) => {
+  let roleColor = 'bg-gray-600';
+  if (role === 'Host / Detective') {
+    roleColor = 'bg-indigo-500';
+  } else if (role === 'Jugador') {
+    roleColor = 'bg-green-600';
+  } 
+
+  return (
+    <div className={`flex items-center justify-between p-2 rounded-lg text-sm font-medium ${roleColor} text-white shadow-md`}>
+      <div className="truncate">
+        <span className="font-bold">{name}</span>
+        <span className="text-xs ml-1 opacity-75">({role})</span>
+      </div>
+      {isRemovable && (
+        <button 
+          onClick={onRemove} 
+          className="ml-2 p-1 rounded-full bg-black/20 hover:bg-black/40 transition duration-150 focus:outline-none"
+        >
+          &times;
+        </button>
+      )}
+    </div>
+  );
+};
+
+const ToggleSwitch = ({ isEnabled, onToggle }) => (
+    <button 
+        onClick={onToggle}
+        className="flex items-center space-x-3 text-white text-base font-semibold transition duration-150 focus:outline-none"
+    >
+        <div className={`w-6 h-6 rounded-full border-2 transition-colors duration-200 flex items-center justify-center ${isEnabled ? 'border-indigo-500 bg-indigo-500' : 'border-gray-500 bg-gray-700'}`}>
+            {isEnabled ? <CheckIcon className="w-4 h-4 text-white" /> : <div className="w-3 h-3 rounded-full bg-transparent"></div>}
+        </div>
+        <span>{isEnabled ? "Pista de Impostor: ACTIVA" : "Alternar Pista de Impostor"}</span>
+    </button>
+);
+
+const ConfigCard = ({ icon: Icon, title, description, children }) => (
+  <div className="bg-white/5 backdrop-blur-sm p-4 sm:p-6 rounded-xl border border-white/10 shadow-lg transition-all duration-300 hover:border-indigo-400/50">
+    <div className="flex items-start space-x-4">
+      <Icon className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-400 flex-shrink-0 mt-1" />
+      <div className="flex-grow">
+        <h3 className="text-lg sm:text-xl font-bold text-white mb-1">{title}</h3>
+        <p className="text-sm text-gray-400 mb-3">{description}</p>
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
+const CustomInput = ({ value, onChange, placeholder, buttonText, onButtonClick, icon: Icon, disabled = false, type = 'text' }) => (
+  <div className="flex flex-col sm:flex-row gap-2">
+    <div className="relative flex-grow">
+      {Icon && <Icon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`w-full p-3 pl-10 bg-gray-700/50 text-white placeholder-gray-400 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-150 ${disabled ? 'opacity-50 cursor-not-allowed' : 'text-white'}`}
+      />
+    </div>
+    {buttonText && (
+      <button
+        onClick={onButtonClick}
+        disabled={disabled}
+        className="w-full sm:w-auto px-4 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+      >
+        {buttonText} 
+      </button>
+    )}
+  </div>
+);
+
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center p-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+    <span className="ml-3 text-white font-semibold">Generando pistas con IA...</span>
+  </div>
+);
+
+// --- Función de Llamada a la API de Gemini ---
+const generateRelatedClue = async (secretWord) => {
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+    
+    // 1. Definir la instrucción del sistema y el prompt del usuario
+    const systemPrompt = "Eres un maestro de juego. Tu tarea es generar una única CATEGORÍA amplia (category) para el Detective y una única palabra o frase muy corta (related_word) en español que esté relacionada, pero sea distinta a la palabra secreta. La related_word debe ser plausible para que un Impostor la use como cubierta. Ambas salidas deben ser concisas y en español. Responde SÓLO con el objeto JSON.";
+    const userQuery = `La palabra secreta es: ${secretWord}`;
+
+    // 2. Definir el esquema JSON para la respuesta
+    const responseSchema = {
+        type: "OBJECT",
+        properties: {
+            "category": { "type": "STRING" },
+            "related_word": { "type": "STRING" }
+        },
+        "propertyOrdering": ["category", "related_word"]
+    };
+
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: responseSchema
+        }
+    };
+
+    let result = null;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 3;
+
+    while (attempts < MAX_ATTEMPTS) {
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const apiResult = await response.json();
+            
+            const candidate = apiResult.candidates?.[0];
+            if (candidate && candidate.content?.parts?.[0]?.text) {
+                const jsonText = candidate.content.parts[0].text;
+                result = JSON.parse(jsonText);
+                break; // Éxito, salir del bucle
+            } else {
+                throw new Error("Respuesta de IA vacía o incompleta.");
+            }
+
+        } catch (error) {
+            attempts++;
+            console.error(`Intento ${attempts} fallido:`, error);
+            if (attempts < MAX_ATTEMPTS) {
+                const delay = Math.pow(2, attempts) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                throw new Error("Fallo en la generación de pistas después de varios intentos. Intenta con una palabra más común.");
+            }
+        }
+    }
+    return result; // { category: "...", related_word: "..." }
+};
+
+
+// --- Componente Principal de la Aplicación ---
+const App = () => {
+  const MAX_IMPOSTORS_CAP = 4;
+  const INITIAL_TIME_SECONDS = 10 * 60; // 10 minutos
+  
+  // --- Estados de Configuración y Flujo ---
+  const [hostName, setHostName] = useState('');
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [players, setPlayers] = useState([]);
+  const [impostorCount, setImpostorCount] = useState(1);
+  const [isHostAdded, setIsHostAdded] = useState(false);
+  const [secretWord, setSecretWord] = useState(''); 
+  const [impostorGetsClue, setImpostorGetsClue] = useState(true); // Se deja en true por defecto para facilitar el juego
+  const [error, setError] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false); // Estado de carga de IA
+
+  // --- Estados de Juego ---
+  const [gamePhase, setGamePhase] = useState('SETUP'); // 'SETUP', 'REVEAL', 'DISCUSSION', 'GAME_OVER'
+  const [gameResult, setGameResult] = useState(null); // Almacena jugadores, roles, palabra, pistas
+
+  // --- Estados de Fase REVEAL ---
+  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+
+  // --- Estados de Fase DISCUSSION ---
+  const [timerSeconds, setTimerSeconds] = useState(INITIAL_TIME_SECONDS);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [expulsionEvent, setExpulsionEvent] = useState(null); // { name, role } del expulsado
+  
+  const totalPlayers = players.length + (isHostAdded ? 1 : 0);
+
+  // --- Utilidades ---
+  const formatTime = (totalSeconds) => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  // Función de reinicio completo
+  const handleRestart = useCallback(() => {
+    setHostName('');
+    setNewPlayerName('');
+    setPlayers([]);
+    setImpostorCount(1);
+    setIsHostAdded(false);
+    setSecretWord('');
+    setImpostorGetsClue(true); // Se mantiene el valor por defecto de pista
+    setError('');
+    setGamePhase('SETUP');
+    setGameResult(null);
+    setCurrentPlayerIndex(0);
+    setTimerSeconds(INITIAL_TIME_SECONDS);
+    setIsTimerActive(false);
+    setExpulsionEvent(null);
+  }, [INITIAL_TIME_SECONDS]);
+
+  // --- Lógica de Manejo de Jugadores y Configuración (Igual que antes) ---
+
+  const handleAddHost = () => {
+    if (hostName.trim() === '') { setError('El nombre del Host no puede estar vacío.'); return; }
+    if (isHostAdded) { setError('El Host ya ha sido añadido.'); return; }
+    setPlayers(prevPlayers => prevPlayers.filter(p => p !== hostName.trim()));
+    setIsHostAdded(true);
+    setError(''); 
+  };
+
+  const handleAddPlayer = () => {
+    const trimmedName = newPlayerName.trim();
+    if (trimmedName === '') { setError('El nombre del jugador no puede estar vacío.'); return; }
+    if (players.includes(trimmedName) || (isHostAdded && hostName.trim() === trimmedName)) {
+      setError(`"${trimmedName}" ya está en la lista de jugadores o es el Host.`);
+      return;
+    }
+    setPlayers([...players, trimmedName]);
+    setNewPlayerName('');
+    setError(''); 
+  };
+
+  const handleRemovePlayer = (playerToRemove) => {
+    setPlayers(players.filter(player => player !== playerToRemove));
+    setError('');
+  };
+
+  const handleImpostorCountChange = (e) => {
+    const value = Math.max(1, parseInt(e.target.value) || 1); 
+    const maxAllowed = Math.min(MAX_IMPOSTORS_CAP, totalPlayers > 1 ? totalPlayers - 1 : 1);
+    setImpostorCount(Math.min(value, maxAllowed));
+  };
+  
+  useEffect(() => {
+      const maxAllowed = Math.min(MAX_IMPOSTORS_CAP, totalPlayers > 1 ? totalPlayers - 1 : 1);
+      setImpostorCount(currentCount => Math.min(currentCount, maxAllowed));
+  }, [totalPlayers]);
+
+  // --- Lógica de Inicio de Juego y Asignación de Roles (ACTUALIZADO CON IA) ---
+  const handleStartGame = async () => {
+    if (totalPlayers < 3 || impostorCount >= totalPlayers || !isHostAdded || secretWord.trim() === '') {
+        setError('Por favor, completa la configuración: 3+ jugadores, Host añadido, palabra secreta y menos impostores que jugadores.');
+        return;
+    }
+
+    setIsGenerating(true);
+    setError('');
+    let generatedClues = { category: null, related_word: null };
+
+    try {
+        // La generación de pistas es necesaria siempre para obtener al menos la categoría del detective.
+        // La única diferencia es si se usa o no la related_word para el impostor.
+        generatedClues = await generateRelatedClue(secretWord.trim());
+        
+    } catch (e) {
+        setError(e.message || 'Error al generar pistas con IA. Por favor, revisa la palabra secreta.');
+        setIsGenerating(false);
+        return;
+    } finally {
+        setIsGenerating(false);
+    }
+
+    const { category, related_word } = generatedClues;
+    
+    // 1. Asignar roles
+    const allPlayersUnsorted = [hostName, ...players]; 
+    const playerRoles = {};
+    const impostors = [];
+
+    playerRoles[hostName] = 'Detective';
+
+    const eligiblePlayers = players.slice();
+    for (let i = eligiblePlayers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [eligiblePlayers[i], eligiblePlayers[j]] = [eligiblePlayers[j], eligiblePlayers[i]];
+    }
+
+    impostors.push(...eligiblePlayers.slice(0, impostorCount));
+
+    eligiblePlayers.forEach(player => {
+        if (impostors.includes(player)) {
+            playerRoles[player] = 'Impostor';
+        } else {
+            playerRoles[player] = 'Jugador';
+        }
+    });
+    
+    // 2. Definir Pistas
+    const detectiveClueText = category ? `CATEGORÍA: ${category.toUpperCase()}` : 'CATEGORÍA: N/A';
+    const impostorClueText = impostorGetsClue && related_word 
+        ? `PALABRA RELACIONADA: ${related_word.toUpperCase()}` 
+        : 'Palabra Oculta';
+    
+    // 3. Crear el array de resultados ordenado para la fase REVEAL
+    const playerNamesInOrder = [...players, hostName]; // Jugadores Regulares, luego Host/Detective
+    
+    const finalOrderedResults = playerNamesInOrder.map(name => {
+        const role = playerRoles[name];
+        let clue = '';
+        
+        if (role === 'Impostor') {
+            clue = impostorClueText;
+        } else if (role === 'Detective') {
+            clue = detectiveClueText;
+        } else {
+            clue = `Palabra: ${secretWord.trim()}`;
+        }
+
+        return {
+            name,
+            role,
+            clue, // Pista o Palabra Secreta
+            isRevealed: false,
+            isExpelled: false,
+        };
+    });
+
+    setGameResult({
+        players: finalOrderedResults, 
+        secretWord: secretWord.trim(),
+        impostorGetsClue,
+        impostors: impostors, // Names of impostors
+        detectiveClue: detectiveClueText, // Guardamos la pista para el final
+        impostorClue: impostorClueText,   // Guardamos la pista para el final
+    });
+
+    setGamePhase('REVEAL');
+    setCurrentPlayerIndex(0);
+    setError('');
+  };
+
+  // --- Lógica del Temporizador (Fase DISCUSSION) ---
+  useEffect(() => {
+    let interval = null;
+    if (isTimerActive && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds(prevSeconds => prevSeconds - 1);
+      }, 1000);
+    } else if (timerSeconds === 0 && isTimerActive) {
+      setIsTimerActive(false);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerActive, timerSeconds]);
+
+  // --- Lógica de Expulsión (Fase DISCUSSION) ---
+  const handleExpelPlayer = (nameToExpel) => {
+    setIsTimerActive(false); // Pausar temporizador para la decisión
+    setExpulsionEvent(null); // Resetear evento anterior
+
+    const updatedPlayers = gameResult.players.map(p => 
+      p.name === nameToExpel ? { ...p, isExpelled: true } : p
+    );
+    
+    const expelledPlayer = updatedPlayers.find(p => p.name === nameToExpel);
+    const remainingImpostors = updatedPlayers.filter(p => p.role === 'Impostor' && !p.isExpelled).length;
+    // La cuenta de "inocentes" incluye a todos los que no son Impostores (Jugadores) ni Detectives.
+    // Esta variable, remainingInnocents, representa a todos los jugadores No-Impostores restantes (Inocentes + Detective).
+    const remainingInnocents = updatedPlayers.filter(p => p.role !== 'Impostor' && !p.isExpelled).length; 
+
+    setExpulsionEvent({
+        name: expelledPlayer.name,
+        role: expelledPlayer.role,
+        isImpostor: expelledPlayer.role === 'Impostor',
+        remainingImpostors: remainingImpostors,
+        innocentsWin: remainingImpostors === 0,
+        // Impostores ganan si el número de No-Impostores (Inocentes + Detective) es igual o menor al número de Impostores.
+        // Esto cubre cualquier escenario donde la proporción I >= R se cumpla (Ej: 2 vs 2, 3 vs 1, 1 vs 1).
+        impostorsWin: remainingInnocents <= remainingImpostors,
+    });
+    
+    setGameResult({ ...gameResult, players: updatedPlayers });
+  };
+  
+  // --- Lógica para Terminar el Juego (desde expulsión o botón) ---
+  const handleEndGame = (winnerRole) => {
+    setIsTimerActive(false);
+    setGamePhase('GAME_OVER');
+    setGameResult(prev => ({
+        ...prev,
+        winner: winnerRole
+    }));
+    setExpulsionEvent(null);
+  };
+  
+  // --- Componentes de Fase (REVEAL) ---
+  const RoleRevealScreen = () => {
+    const currentPlayer = gameResult.players[currentPlayerIndex];
+    const isLastPlayer = currentPlayerIndex === gameResult.players.length - 1;
+    const [isIdentityVisible, setIsIdentityVisible] = useState(false);
+    const [hasRevealed, setHasRevealed] = useState(false);
+
+    const handleNextPlayer = () => {
+        if (!isLastPlayer) {
+            setCurrentPlayerIndex(prev => prev + 1);
+            setIsIdentityVisible(false);
+            setHasRevealed(false);
+        } else {
+            // Último jugador (Detective) termina, pasa a Discusión
+            setGamePhase('DISCUSSION');
+            setIsTimerActive(true); // Inicia el temporizador
+        }
+    };
+    
+    const handleReveal = () => {
+        setIsIdentityVisible(!isIdentityVisible);
+        if (!hasRevealed) setHasRevealed(true);
+    };
+
+    const getRoleColor = (role) => {
+        if (role === 'Impostor') return 'bg-red-700/80 border-red-500';
+        if (role === 'Detective') return 'bg-indigo-700/80 border-indigo-500';
+        return 'bg-green-700/80 border-green-500';
+    };
+
+    return (
+        // Se reduce el max-w para achicar el cuadro
+        <div className="flex flex-col items-center p-6 sm:p-8 rounded-xl bg-gray-800/80 shadow-2xl border border-white/10 w-full max-w-md mx-auto">
+            <h2 className="text-3xl font-extrabold text-white mb-6 text-center">
+                Turno de: <span className="text-indigo-400 block">{currentPlayer.name}</span>
+            </h2>
+
+            <button
+                onClick={handleReveal}
+                className={`w-full py-4 mb-4 font-bold text-xl rounded-xl transition duration-150 ${isIdentityVisible ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white shadow-lg active:scale-[0.98]`}
+            >
+                {isIdentityVisible ? 'Ocultar Identidad' : 'Mostrar Identidad'}
+            </button>
+            
+            <div className={`w-full transition-all duration-500 ease-in-out ${isIdentityVisible ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                <div className={`p-6 rounded-xl border-4 text-white text-center shadow-inner mt-4 ${getRoleColor(currentPlayer.role)}`}>
+                    <p className="text-2xl font-semibold mb-2">
+                        ROL: <span className="font-extrabold uppercase">{currentPlayer.role}</span>
+                    </p>
+                    <p className="text-lg font-light italic mt-4">
+                        {currentPlayer.role === 'Impostor' ? 'TU PISTA ESPECIAL:' : 'TU PALABRA/PISTA:'}
+                    </p>
+                    <p className="text-3xl font-mono mt-1 mb-4 animate-pulse">
+                        {currentPlayer.clue}
+                    </p>
+                    {currentPlayer.role === 'Impostor' && gameResult.impostorGetsClue && (
+                         <p className="text-sm text-red-200 mt-2">¡Eres el impostor! Esta palabra relacionada te ayudará a simular que conoces la palabra secreta.</p>
+                    )}
+                    {currentPlayer.role === 'Impostor' && !gameResult.impostorGetsClue && (
+                         <p className="text-sm text-red-200 mt-2">¡Eres el impostor! No conoces la palabra. ¡Engaña a los demás!</p>
+                    )}
+                    {currentPlayer.role === 'Detective' && (
+                         <p className="text-sm text-indigo-200 mt-2">Usa la categoría para dirigir la discusión sin revelar la palabra.</p>
+                    )}
+                </div>
+            </div>
+            
+            {hasRevealed && (
+                <button
+                    onClick={handleNextPlayer}
+                    className={`mt-6 w-full py-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-150 active:scale-[0.98] flex items-center justify-center space-x-2`}
+                >
+                    <span>{isLastPlayer ? 'Empezar el Juego' : 'Pasar al Siguiente Jugador'}</span>
+                </button>
+            )}
+            
+            <p className="text-sm text-gray-400 mt-4">
+                Jugador {currentPlayerIndex + 1} de {gameResult.players.length}
+            </p>
+        </div>
+    );
+  };
+  
+  // --- Componentes de Fase (DISCUSSION) ---
+  const DiscussionScreen = () => {
+    const playersInGame = gameResult.players.filter(p => !p.isExpelled);
+
+    // Lógica para manejar la elección después de una expulsión
+    const handleExpulsionChoice = (shouldContinue) => {
+        setExpulsionEvent(null);
+        if (shouldContinue) {
+            setIsTimerActive(true); // Reanudar el temporizador
+        } else {
+            handleEndGame('DISCUSIÓN DETENIDA');
+        }
+    }
+    
+    // Vista de Alerta/Modal después de expulsión
+    if (expulsionEvent) {
+        const { name, role, isImpostor, innocentsWin, impostorsWin, remainingImpostors } = expulsionEvent;
+        
+        // Comprobación de fin de juego automático
+        if (innocentsWin) {
+             handleEndGame('INOCENTES');
+             return null;
+        }
+        if (impostorsWin) {
+            handleEndGame('IMPOSTORES');
+            return null;
+        }
+        
+        // Diálogo de continuación
+        return (
+            <div className="flex flex-col items-center justify-center p-8 rounded-xl bg-gray-800/95 border-4 border-yellow-500 w-full max-w-lg mx-auto shadow-2xl">
+                <p className="text-2xl font-bold text-yellow-300 mb-4">¡Jugador Expulsado!</p>
+                <p className={`text-3xl font-extrabold ${isImpostor ? 'text-red-400' : 'text-green-400'} mb-6`}>
+                    {name} era un {isImpostor ? 'IMPOSTOR' : 'INOCENTE'}
+                </p>
+
+                <p className="text-lg text-gray-300 text-center mb-8">
+                    {isImpostor 
+                        ? (remainingImpostors > 0 ? `Quedan ${remainingImpostors} impostores.` : 'Error: No debería llegar aquí si ganan.')
+                        : 'Era un inocente, los impostores siguen libres.'
+                    }
+                </p>
+
+                <div className="flex space-x-4">
+                    <button 
+                        onClick={() => handleExpulsionChoice(true)}
+                        className="py-3 px-6 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition duration-150"
+                    >
+                        Seguir el Juego
+                    </button>
+                    <button 
+                        onClick={() => handleExpulsionChoice(false)}
+                        className="py-3 px-6 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition duration-150"
+                    >
+                        Terminar el Juego
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col lg:flex-row gap-6 w-full">
+            {/* Columna de Temporizador y Estado */}
+            <div className="lg:w-1/3 p-6 bg-gray-800/80 rounded-xl border border-white/10 shadow-lg flex flex-col items-center sticky top-4 h-fit">
+                <h3 className="text-2xl font-bold text-white mb-4 flex items-center space-x-2">
+                    <ClockIcon className="w-6 h-6 text-yellow-400"/>
+                    <span>Temporizador</span>
+                </h3>
+                <div className="text-6xl font-mono font-extrabold text-red-500 bg-gray-900 px-6 py-3 rounded-xl mb-4 shadow-inner">
+                    {formatTime(timerSeconds)}
+                </div>
+                
+                <p className="text-sm text-gray-400 text-center">
+                    Tiempo restante para la discusión. El juego puede terminar antes si se expele al último impostor o quedan pocos inocentes.
+                </p>
+
+                <button 
+                    onClick={() => handleEndGame('HOST TERMINÓ')}
+                    className="mt-6 w-full py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition duration-150"
+                >
+                    Terminar el Juego Manualmente
+                </button>
+            </div>
+            
+            {/* Columna de Lista de Expulsión */}
+            <div className="lg:w-2/3 p-6 bg-gray-800/80 rounded-xl border border-white/10 shadow-lg">
+                <h3 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
+                    <HashIcon className="w-6 h-6 text-indigo-400"/>
+                    <span>Lista de Expulsión ({playersInGame.length} Jugadores Activos)</span>
+                </h3>
+                
+                <div className="space-y-3">
+                    {gameResult.players
+                        .sort((a, b) => (a.role === 'Detective' ? 1 : b.role === 'Detective' ? -1 : 0)) // Detective al final
+                        .map(player => (
+                            <div key={player.name} className={`flex justify-between items-center p-3 rounded-lg shadow-md transition-all duration-300 ${player.isExpelled ? 'bg-gray-700 opacity-50' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-white text-lg">{player.name}</span>
+                                    {player.isExpelled && <span className="text-sm italic text-red-400">EXPULSADO ({player.role})</span>}
+                                </div>
+                                
+                                <button
+                                    onClick={() => handleExpelPlayer(player.name)}
+                                    disabled={player.isExpelled || player.role === 'Detective'}
+                                    className={`py-2 px-4 font-bold rounded-lg transition duration-150 active:scale-[0.98] ${
+                                        player.isExpelled
+                                        ? 'bg-gray-500 cursor-not-allowed text-gray-300'
+                                        : player.role === 'Detective'
+                                            ? 'bg-indigo-900/50 text-indigo-400 cursor-not-allowed'
+                                            : 'bg-red-600 hover:bg-red-700 text-white shadow-md'
+                                    }`}
+                                >
+                                    {player.role === 'Detective' ? 'Inexpulsable' : 'Expulsar'}
+                                </button>
+                            </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+  };
+
+  // --- Componentes de Fase (GAME_OVER) ---
+  const GameOverScreen = () => {
+    const winnerRole = gameResult.winner;
+    const isImpostorWin = winnerRole === 'IMPOSTORES';
+    const isInnocentWin = winnerRole === 'INOCENTES';
+    
+    const title = isImpostorWin ? "¡VICTORIA PARA LOS IMPOSTORES!" : isInnocentWin ? "¡GANAN LOS INOCENTES!" : "JUEGO TERMINADO POR HOST";
+    const titleColor = isImpostorWin ? 'text-red-400' : isInnocentWin ? 'text-green-400' : 'text-yellow-400';
+    
+    return (
+        // Se reduce el max-w para achicar el cuadro
+        <div className="flex flex-col items-center justify-center min-h-[60vh] bg-gray-800/90 p-8 sm:p-12 rounded-xl shadow-2xl border-4 border-indigo-400/50 w-full max-w-lg mx-auto">
+            <h2 className={`text-4xl font-extrabold mb-6 ${titleColor} text-center`}>
+                {title}
+            </h2>
+
+            {/* PISTAS REVELADAS */}
+            <h3 className="text-2xl font-bold text-white mt-4 mb-4 border-t border-gray-700 pt-4 w-full text-center">
+                Pistas Utilizadas
+            </h3>
+            <div className="w-full space-y-3 bg-gray-700/50 p-4 rounded-lg">
+                <p className="text-xl text-white font-bold text-center">
+                    Palabra Secreta: <span className="font-extrabold text-indigo-300 block text-2xl">{gameResult.secretWord.toUpperCase()}</span>
+                </p>
+                <div className="border-t border-gray-600 pt-3">
+                    <p className="text-lg text-yellow-300 font-semibold flex justify-between">
+                        <span>Pista Detective (Categoría):</span>
+                        <span className="font-mono">{gameResult.detectiveClue.replace('CATEGORÍA: ', '')}</span>
+                    </p>
+                    <p className={`text-lg font-semibold flex justify-between ${gameResult.impostorGetsClue ? 'text-red-300' : 'text-gray-400'}`}>
+                        <span>Pista Impostor:</span>
+                        <span className="font-mono">{gameResult.impostorClue.replace('PALABRA RELACIONADA: ', '')}</span>
+                    </p>
+                </div>
+            </div>
+            {/* FIN PISTAS REVELADAS */}
+
+            <h3 className="text-2xl font-bold text-white mt-8 mb-4">
+                Roles Finales
+            </h3>
+            <div className="w-full space-y-2 max-h-40 overflow-y-auto pr-2">
+                {gameResult.players.map((p, index) => (
+                    <div 
+                        key={index} 
+                        className={`p-3 rounded-lg shadow-md flex justify-between items-center ${
+                            p.role === 'Impostor' ? 'bg-red-800/70' : p.role === 'Detective' ? 'bg-indigo-800/70' : 'bg-green-800/70'
+                        } text-white`}
+                    >
+                        <p className="font-bold text-lg">{p.name} {p.isExpelled ? '(Expulsado)' : ''}</p>
+                        <p className="text-sm italic font-medium">{p.role}</p>
+                    </div>
+                ))}
+            </div>
+
+            <button 
+                onClick={handleRestart}
+                className="mt-10 py-3 px-8 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition duration-150 flex items-center space-x-2"
+            >
+                {/* Ícono de + para Crear una Nueva Partida */}
+                <PlusIcon className="w-5 h-5"/>
+                <span>Crear una Nueva Partida</span>
+            </button>
+        </div>
+    );
+  };
+
+
+  // --- Renderizado de Fases ---
+  const renderPhase = () => {
+    // Si la IA está generando pistas, muestra el spinner
+    if (isGenerating) {
+        return <LoadingSpinner />;
+    }
+    
+    switch (gamePhase) {
+      case 'REVEAL':
+        return <RoleRevealScreen />;
+      case 'DISCUSSION':
+        return <DiscussionScreen />;
+      case 'GAME_OVER':
+        return <GameOverScreen />;
+      case 'SETUP':
+      default:
+        // Configuración 
+        return (
+          <>
+            <header className="text-center mb-10">
+              <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">
+                Configuración del Juego
+              </h1>
+              <p className="text-gray-400 mt-2 text-lg">Define los roles y jugadores para empezar.</p>
+            </header>
+
+            {error && (
+              <div className="bg-red-900/50 text-red-300 p-3 rounded-lg border border-red-700/50 text-center font-medium">
+                ¡Error! {error}
+              </div>
+            )}
+
+            {/* --- LISTA DE JUGADORES --- */}
+            <div className="mt-8 bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+              <h3 className="text-2xl font-bold text-white mb-4 flex items-center space-x-2">
+                <UserIcon className="w-6 h-6 text-indigo-400"/>
+                <span>Lista de Jugadores ({totalPlayers})</span>
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {isHostAdded && (
+                  <PlayerTag name={hostName} role="Host / Detective" isRemovable={false} />
+                )}
+                {players.map((player, index) => (
+                  <PlayerTag 
+                    key={index} 
+                    name={player} 
+                    role={'Jugador'}
+                    isRemovable={true}
+                    onRemove={() => handleRemovePlayer(player)}
+                  />
+                ))}
+              </div>
+              {totalPlayers === 0 && (
+                <p className="text-gray-500 text-center p-4 bg-gray-700 rounded-lg mt-3">Aún no hay jugadores añadidos. ¡Empieza con el Host!</p>
+              )}
+            </div>
+
+            {/* Contenedor de Configuración (Grid) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Tarjeta 1: Configuración del Host/Detective y Palabra Secreta */}
+              <ConfigCard 
+                icon={CheckCircleIcon} 
+                title="Host (Anfitrión) y Palabra" 
+                description="El anfitrión elige la palabra secreta. Se le define automáticamente como el Detective."
+              >
+                <CustomInput
+                  icon={UserIcon}
+                  value={hostName}
+                  onChange={(e) => setHostName(e.target.value)}
+                  placeholder="Nombre del Host"
+                  buttonText={<>{isHostAdded ? <><CheckCircleIcon className="w-4 h-4"/> Host Añadido</> : <><PlusIcon className="w-4 h-4"/> Añadir Host</>}</>}
+                  onButtonClick={handleAddHost}
+                  disabled={isHostAdded}
+                />
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center space-x-1">
+                        <PencilIcon className="w-4 h-4 text-indigo-400"/>
+                        <span>Palabra Secreta</span>
+                    </h4>
+                    <CustomInput
+                        icon={PencilIcon}
+                        value={secretWord}
+                        onChange={(e) => setSecretWord(e.target.value)}
+                        placeholder="Ej: Dinosaurio, Pizza, Computadora"
+                        disabled={!isHostAdded} 
+                    />
+                </div>
+              </ConfigCard>
+
+              {/* Tarjeta 2 (Combinada): Añadir Jugadores y Configuración de Roles */}
+              <ConfigCard 
+                icon={PlusIcon} 
+                title="Añadir Jugadores y Roles" 
+                description="Agrega jugadores y define el conteo de impostores y sus reglas para el juego."
+              >
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">1. Agregar Jugadores</h4>
+                <CustomInput
+                  icon={UserIcon}
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  placeholder="Nombre del Jugador"
+                  buttonText={<><PlusIcon className="w-4 h-4"/> Añadir Jugador</>}
+                  onButtonClick={handleAddPlayer}
+                />
+
+                <div className="mt-6 pt-4 border-t border-gray-700 space-y-4">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-2 flex items-center space-x-1">
+                        <KnifeIcon className="w-4 h-4 text-red-400"/> 
+                        <span>2. Cantidad de Impostores</span>
+                    </h4>
+                    
+                    <div className="relative max-w-xs">
+                        <HashIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="number"
+                            value={impostorCount}
+                            onChange={handleImpostorCountChange}
+                            min="1"
+                            max={Math.min(MAX_IMPOSTORS_CAP, totalPlayers > 1 ? totalPlayers - 1 : 1)}
+                            disabled={totalPlayers < 2}
+                            className={`w-full p-3 pl-10 bg-gray-700/50 text-white placeholder-gray-400 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-150 ${totalPlayers < 2 ? 'opacity-50 cursor-not-allowed' : 'text-white'}`}
+                        />
+                    </div>
+                    <p className="text-sm text-gray-400">
+                        El mínimo es un impostor. Máximo: 4.
+                    </p>
+                    
+                    <div className="mt-4">
+                        <ToggleSwitch
+                            isEnabled={impostorGetsClue}
+                            onToggle={() => setImpostorGetsClue(!impostorGetsClue)}
+                        />
+                    </div>
+                </div>
+              </ConfigCard>
+
+              {/* Tarjeta 3: Resumen de Roles y Pistas Corregidas */}
+              <ConfigCard icon={AILogo} title="Pistas Generadas por IA" description="La IA creará automáticamente las pistas basadas en la palabra secreta."
+              >
+                <div className="space-y-3 p-3 bg-gray-800/50 rounded-lg">
+                    <div className="flex justify-between items-center p-2 bg-indigo-900/50 rounded-md">
+                        <span className="font-medium text-indigo-300">Detective (Host):</span>
+                        <span className="text-sm text-indigo-100 font-mono">CATEGORÍA (Ej: Deporte)</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-red-900/50 rounded-md">
+                        <span className="font-medium text-red-300">Impostor:</span>
+                        <span className="text-sm text-red-100 font-mono">
+                            {impostorGetsClue ? 'PALABRA RELACIONADA (Ej: Pelota)' : 'Palabra Oculta'}
+                        </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2 italic">
+                        El Impostor {impostorGetsClue ? 'recibe una palabra para engañar a los inocentes. ' : 'no conoce la palabra secreta. '}El Detective recibe solo la categoría.
+                    </p>
+                </div>
+              </ConfigCard>
+              
+              <div></div> 
+
+            </div>
+
+            {/* Botón de Inicio */}
+            <div className="text-center pt-8">
+              <button
+                onClick={handleStartGame}
+                disabled={totalPlayers < 3 || impostorCount >= totalPlayers || !isHostAdded || secretWord.trim() === '' || isGenerating}
+                className="w-full max-w-sm py-4 bg-green-600 text-white font-extrabold text-xl rounded-xl shadow-xl hover:bg-green-700 transition duration-150 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3"
+              >
+                {isGenerating ? (
+                    <>
+                        <LoadingSpinner />
+                        <span>Generando...</span>
+                    </>
+                ) : (
+                    <span>Iniciar Juego ({totalPlayers} Jugadores)</span>
+                )}
+              </button>
+              {totalPlayers < 3 && <p className="text-sm text-yellow-500 mt-2">Necesitas al menos 3 jugadores (incluyendo el Host) para empezar.</p>}
+              {isHostAdded && secretWord.trim() === '' && totalPlayers >= 3 && <p className="text-sm text-yellow-500 mt-2">¡No olvides escribir la Palabra Secreta!</p>}
+            </div>
+          </>
+        );
+    }
+  }
+
+  // Estructura principal de la aplicación
+  return (
+    // Achicamos el contenedor principal
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8 flex justify-center items-start">
+      <div className="w-full max-w-3xl space-y-8">
+        {renderPhase()}
+      </div>
+    </div>
+  );
+};
+
+export default App;
+
